@@ -18,40 +18,55 @@ class CallRoomScreen extends StatelessWidget {
     final roomCubit = context.read<RoomCubit>();
     final mediaCubit = context.read<MediaCubit>();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F), // True deep black
-      extendBody: true, // Allows content to flow under the navigation bar
-      body: BlocBuilder<RoomCubit, RoomState>(
-        builder: (context, state) {
-          if (!state.connected) {
-            return _buildLoadingState();
-          }
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          roomCubit.leave();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F0F0F), // True deep black
+        extendBody: true, // Allows content to flow under the navigation bar
+        body: BlocBuilder<RoomCubit, RoomState>(
+          builder: (context, state) {
+            // Only show the loader if we are currently TRYING to connect.
+            // If state is idle or disconnected, we show a black placeholder
+            // or the pop will have already handled it.
+            if (state.connecting) {
+              return _buildLoadingState();
+            }
 
-          final participants = state.participants;
+            // If we just left the room, show nothing (Navigator is popping anyway)
+            if (!state.connected && !state.connecting) {
+              return const Scaffold(backgroundColor: Colors.black);
+            }
 
-          return Stack(
-            children: [
-              // 1. Dynamic Video Content Area
-              Positioned.fill(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  child: participants.length <= 2
-                      ? _buildMessengerLayout(participants)
-                      : _buildGridLayout(participants),
+            final participants = state.participants;
+
+            return Stack(
+              children: [
+                // 1. Dynamic Video Content Area
+                Positioned.fill(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 500),
+                    child: participants.length <= 2
+                        ? _buildMessengerLayout(participants)
+                        : _buildGridLayout(participants),
+                  ),
                 ),
-              ),
 
-              // 2. Custom App Bar Overlay
-              _buildTopOverlay(context, roomCubit),
+                // 2. Custom App Bar Overlay
+                _buildTopOverlay(context, roomCubit),
 
-              // 3. Bottom Controls with Gradient Fade
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: _buildBottomControls(mediaCubit, roomCubit),
-              ),
-            ],
-          );
-        },
+                // 3. Bottom Controls with Gradient Fade
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _buildBottomControls(mediaCubit, roomCubit),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -68,7 +83,7 @@ class CallRoomScreen extends StatelessWidget {
           const SizedBox(height: 20),
           Text(
             "Connecting to Secure Room...",
-            style: TextStyle(color: Colors.white.withOpacity(0.6)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
           ),
         ],
       ),
@@ -89,7 +104,7 @@ class CallRoomScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
           ),
         ),
         child: Row(
@@ -154,7 +169,7 @@ class CallRoomScreen extends StatelessWidget {
                 boxShadow: [
                   BoxShadow(
                     blurRadius: 20,
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withValues(alpha: 0.4),
                   ),
                 ],
               ),
@@ -191,7 +206,7 @@ class CallRoomScreen extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Colors.black.withOpacity(0.9), Colors.transparent],
+          colors: [Colors.black.withValues(alpha: 0.9), Colors.transparent],
         ),
       ),
       child: BlocBuilder<MediaCubit, MediaState>(

@@ -13,10 +13,7 @@ class RoomCubit extends Cubit<RoomState> {
 
   StreamSubscription<RoomEvent>? _sub;
 
-  Future<void> join({
-    required String wsUrl,
-    required String token,
-  }) async {
+  Future<void> join({required String wsUrl, required String token}) async {
     emit(state.copyWith(connecting: true, connected: false, error: null));
 
     try {
@@ -28,27 +25,38 @@ class RoomCubit extends Cubit<RoomState> {
         emit(state.copyWith(participants: _liveKit.participantsSnapshot()));
       });
 
-      emit(state.copyWith(
-        connecting: false,
-        connected: true,
-        participants: _liveKit.participantsSnapshot(),
-      ));
+      emit(
+        state.copyWith(
+          connecting: false,
+          connected: true,
+          participants: _liveKit.participantsSnapshot(),
+        ),
+      );
     } catch (e) {
-      emit(state.copyWith(
-        connecting: false,
-        connected: false,
-        error: e.toString(),
-      ));
+      emit(
+        state.copyWith(
+          connecting: false,
+          connected: false,
+          error: e.toString(),
+        ),
+      );
     }
   }
 
   Future<void> leave() async {
+    // 1. Stop listening to events immediately
     await _sub?.cancel();
     _sub = null;
 
-    await _liveKit.disconnect();
-
-    emit(RoomState.idle());
+    try {
+      // 2. Disconnect from the server
+      await _liveKit.disconnect();
+    } catch (e) {
+      print("Error during disconnect: $e");
+    } finally {
+      // 3. Always reset to idle so the Cubit is ready for the next call
+      emit(RoomState.idle());
+    }
   }
 
   @override

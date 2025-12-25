@@ -18,11 +18,12 @@ class RoomControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Replacement for withOpacity(0.15)
     final Color color = isDestructive
         ? Colors.redAccent
         : (isActive
-              ? Colors.white.withOpacity(0.15)
-              : Colors.redAccent.withOpacity(0.2));
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.redAccent.withValues(alpha: 0.2));
 
     final Color iconColor = isDestructive || !isActive
         ? Colors.white
@@ -41,8 +42,8 @@ class RoomControlButton extends StatelessWidget {
               color: color,
               border: Border.all(
                 color: isActive
-                    ? Colors.white10
-                    : Colors.redAccent.withOpacity(0.5),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.redAccent.withValues(alpha: 0.5),
                 width: 1.5,
               ),
             ),
@@ -53,7 +54,7 @@ class RoomControlButton extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 10,
             fontWeight: FontWeight.w500,
           ),
