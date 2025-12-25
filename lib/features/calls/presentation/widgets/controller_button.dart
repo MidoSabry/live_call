@@ -6,6 +6,7 @@ class RoomControlButton extends StatelessWidget {
   final bool isActive;
   final bool isDestructive;
   final String label;
+  final bool isSpeaker; // Added to trigger the growth effect
 
   const RoomControlButton({
     super.key,
@@ -14,20 +15,21 @@ class RoomControlButton extends StatelessWidget {
     required this.label,
     this.isActive = true,
     this.isDestructive = false,
+    this.isSpeaker = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Replacement for withOpacity(0.15)
-    final Color color = isDestructive
+    // Red color for destructive (End Call) or inactive (Muted/Cam Off)
+    final Color backgroundColor = isDestructive
         ? Colors.redAccent
         : (isActive
               ? Colors.white.withValues(alpha: 0.15)
               : Colors.redAccent.withValues(alpha: 0.2));
 
-    final Color iconColor = isDestructive || !isActive
-        ? Colors.white
-        : Colors.white;
+    final Color borderColor = isActive
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.redAccent.withValues(alpha: 0.5);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -39,15 +41,16 @@ class RoomControlButton extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color,
-              border: Border.all(
-                color: isActive
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.redAccent.withValues(alpha: 0.5),
-                width: 1.5,
-              ),
+              color: backgroundColor,
+              border: Border.all(color: borderColor, width: 1.5),
             ),
-            child: Icon(icon, color: iconColor, size: 28),
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 200),
+              // Grows the icon specifically for the active speaker
+              scale: (isSpeaker && isActive) ? 1.3 : 1.0,
+              curve: Curves.easeOutBack,
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
           ),
         ),
         const SizedBox(height: 8),
