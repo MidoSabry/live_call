@@ -96,8 +96,16 @@ class CallRoomScreen extends StatelessWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () =>
-                  cubit.leave().then((_) => Navigator.pop(context)),
+              onPressed: () async {
+                // 1. Trigger the leave logic
+                // We don't 'await' here if we want the UI to disappear instantly
+                cubit.leave();
+
+                // 2. Immediately pop the screen to prevent seeing the "Loading" state
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
             ),
             const Expanded(
               child: Text(
@@ -216,7 +224,16 @@ class CallRoomScreen extends StatelessWidget {
                 label: "End Call",
                 isDestructive: true,
                 icon: Icons.call_end_rounded,
-                onTap: () => roomCubit.leave(),
+                onTap: () async {
+                  // 1. Trigger the leave logic
+                  // We don't 'await' here if we want the UI to disappear instantly
+                  roomCubit.leave();
+
+                  // 2. Immediately pop the screen to prevent seeing the "Loading" state
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                },
               ),
             ],
           );
