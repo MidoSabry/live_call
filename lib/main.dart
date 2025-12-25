@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'core/di/injector.dart';
@@ -7,8 +8,28 @@ import 'features/calls/logic/room_cubit/room_cubit.dart';
 import 'features/calls/presentation/screens/join_room_screen.dart';
 import 'features/calls/presentation/screens/call_room_screen.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set preferred orientations (portrait and landscape)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
+  // Set system UI overlay style for status bar
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.black,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+
   configureDependencies();
   runApp(const MyApp());
 }
