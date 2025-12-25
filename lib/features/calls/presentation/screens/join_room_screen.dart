@@ -13,7 +13,7 @@ class JoinRoomScreen extends StatefulWidget {
 }
 
 class _JoinRoomScreenState extends State<JoinRoomScreen> {
-  final _wsUrl = TextEditingController(text: 'ws://192.168.1.20:7880');
+  final _wsUrl = TextEditingController(text: 'ws://10.30.20.74:7880');
   final _token = TextEditingController();
 
   @override
