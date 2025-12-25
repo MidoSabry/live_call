@@ -3,8 +3,15 @@ import 'package:livekit_client/livekit_client.dart';
 
 class ParticipantTile extends StatefulWidget {
   final Participant participant;
+  final bool isMiniView;
+  final bool isFullScreen;
 
-  const ParticipantTile({super.key, required this.participant});
+  const ParticipantTile({
+    super.key,
+    required this.participant,
+    this.isMiniView = false,
+    this.isFullScreen = false,
+  });
 
   @override
   State<ParticipantTile> createState() => _ParticipantTileState();
@@ -12,6 +19,7 @@ class ParticipantTile extends StatefulWidget {
 
 class _ParticipantTileState extends State<ParticipantTile> {
   TrackPublication? _videoPub;
+  bool _isMuted = false;
 
   @override
   void initState() {
@@ -21,18 +29,15 @@ class _ParticipantTileState extends State<ParticipantTile> {
   }
 
   @override
-  void didUpdateWidget(covariant ParticipantTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.participant != widget.participant) {
-      oldWidget.participant.removeListener(_onParticipantChanged);
-      widget.participant.addListener(_onParticipantChanged);
-      _onParticipantChanged();
-    }
+  void dispose() {
+    widget.participant.removeListener(_onParticipantChanged);
+    super.dispose();
   }
 
   void _onParticipantChanged() {
-    // Pick the first subscribed video track
     final pubs = widget.participant.videoTrackPublications;
+    final audioPubs = widget.participant.audioTrackPublications;
+
     TrackPublication? found;
     for (final pub in pubs) {
       if (pub.subscribed && pub.track is VideoTrack) {
@@ -40,51 +45,118 @@ class _ParticipantTileState extends State<ParticipantTile> {
         break;
       }
     }
-    setState(() => _videoPub = found);
-  }
 
-  @override
-  void dispose() {
-    widget.participant.removeListener(_onParticipantChanged);
-    super.dispose();
+    // Check if muted
+    final muted = audioPubs.isEmpty || audioPubs.first.muted;
+
+    if (mounted) {
+      setState(() {
+        _videoPub = found;
+        _isMuted = muted;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final identity = widget.participant.identity;
-    final name = widget.participant.name;
-
     final track = _videoPub?.track;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        color: Colors.black12,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: track is VideoTrack
-                  ? VideoTrackRenderer(track)
-                  : const Center(child: Icon(Icons.person, size: 64)),
-            ),
+    final name = widget.participant.name.isNotEmpty
+        ? widget.participant.name
+        : widget.participant.identity;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2E),
+        borderRadius: BorderRadius.circular(widget.isFullScreen ? 0 : 16),
+      ),
+      child: Stack(
+        children: [
+          // 1. Video or Avatar
+          Positioned.fill(
+            child: (track is VideoTrack && !(_videoPub?.muted ?? true))
+                ? VideoTrackRenderer(
+                    track,
+                    fit: widget.isFullScreen
+                        ? VideoViewFit.cover
+                        : VideoViewFit.contain,
+                  )
+                : _buildAvatar(name),
+          ),
+
+          // 2. Mute Indicator (Top Right)
+          if (_isMuted)
             Positioned(
-              left: 8,
-              bottom: 8,
+              top: 8,
               right: 8,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.black.withOpacity(0.5),
+                  shape: BoxShape.circle,
                 ),
-                child: Text(
-                  name.isNotEmpty ? name : identity,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white),
+                child: const Icon(
+                  Icons.mic_off,
+                  color: Colors.redAccent,
+                  size: 16,
                 ),
               ),
             ),
-          ],
+
+          // 3. Name Tag (Bottom Left) - Hidden in Mini View
+          if (!widget.isMiniView)
+            Positioned(
+              bottom: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar(String name) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF434343), Color(0xFF000000)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: CircleAvatar(
+          radius: widget.isMiniView ? 24 : 40,
+          backgroundColor: Colors.blueAccent.withOpacity(0.2),
+          child: Text(
+            name.isNotEmpty ? name[0].toUpperCase() : '?',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: widget.isMiniView ? 20 : 32,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );
