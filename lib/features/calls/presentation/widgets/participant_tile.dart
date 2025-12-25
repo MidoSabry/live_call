@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:livekit_client/livekit_client.dart';
+import '../../logic/media_cubit/media_cubit.dart';
 
 class ParticipantTile extends StatefulWidget {
   final Participant participant;
@@ -19,42 +21,32 @@ class ParticipantTile extends StatefulWidget {
 
 class _ParticipantTileState extends State<ParticipantTile> {
   TrackPublication? _videoPub;
-  bool _isMuted = false;
+  bool _isMuted = true;
+  bool _isSpeaking = false;
 
   @override
   void initState() {
     super.initState();
-    widget.participant.addListener(_onParticipantChanged);
-    _onParticipantChanged();
+    widget.participant.addListener(_updateState);
+    _updateState();
   }
 
   @override
   void dispose() {
-    widget.participant.removeListener(_onParticipantChanged);
+    widget.participant.removeListener(_updateState);
     super.dispose();
   }
 
-  void _onParticipantChanged() {
-    final pubs = widget.participant.videoTrackPublications;
-    final audioPubs = widget.participant.audioTrackPublications;
-
-    TrackPublication? found;
-    for (final pub in pubs) {
-      if (pub.subscribed && pub.track is VideoTrack) {
-        found = pub;
-        break;
-      }
-    }
-
-    // Check if muted
-    final muted = audioPubs.isEmpty || audioPubs.first.muted;
-
-    if (mounted) {
-      setState(() {
-        _videoPub = found;
-        _isMuted = muted;
-      });
-    }
+  void _updateState() {
+    if (!mounted) return;
+    setState(() {
+      _isMuted = widget.participant.isMuted;
+      _isSpeaking = widget.participant.isSpeaking;
+      final pubs = widget.participant.videoTrackPublications;
+      _videoPub = pubs
+          .where((p) => p.subscribed && !p.muted && p.track is VideoTrack)
+          .firstOrNull;
+    });
   }
 
   @override
@@ -62,100 +54,93 @@ class _ParticipantTileState extends State<ParticipantTile> {
     final track = _videoPub?.track;
     final name = widget.participant.name.isNotEmpty
         ? widget.participant.name
-        : widget.participant.identity;
+        : "User";
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.circular(widget.isFullScreen ? 0 : 16),
-      ),
-      child: Stack(
-        children: [
-          // 1. Video or Avatar
-          Positioned.fill(
-            child: (track is VideoTrack && !(_videoPub?.muted ?? true))
-                ? VideoTrackRenderer(
-                    track,
-                    fit: widget.isFullScreen
-                        ? VideoViewFit.cover
-                        : VideoViewFit.contain,
-                  )
-                : _buildAvatar(name),
+    return GestureDetector(
+      onDoubleTap: () {
+        if (widget.participant is LocalParticipant) {
+          context.read<MediaCubit>().switchCamera();
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(widget.isFullScreen ? 0 : 24),
+          border: Border.all(
+            color: _isSpeaking ? Colors.greenAccent : Colors.white10,
+            width: _isSpeaking ? 3 : 1,
           ),
-
-          // 2. Mute Indicator (Top Right)
-          if (_isMuted)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.mic_off,
-                  color: Colors.redAccent,
-                  size: 16,
-                ),
+          boxShadow: [
+            if (_isSpeaking)
+              BoxShadow(
+                color: Colors.greenAccent.withValues(alpha: 0.2),
+                blurRadius: 15,
               ),
-            ),
-
-          // 3. Name Tag (Bottom Left) - Hidden in Mini View
-          if (!widget.isMiniView)
-            Positioned(
-              bottom: 12,
-              left: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(widget.isFullScreen ? 0 : 22),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: (track is VideoTrack)
+                    ? VideoTrackRenderer(track, fit: VideoViewFit.cover)
+                    : _buildAvatar(name),
+              ),
+              // ✅ Red Mute Badge
+              if (_isMuted)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Colors.black45,
+                      shape: BoxShape.circle,
                     ),
-                  ],
+                    child: const Icon(
+                      Icons.mic_off_rounded,
+                      color: Colors.red,
+                      size: 14,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-        ],
+              if (!widget.isMiniView)
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      name,
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildAvatar(String name) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF434343), Color(0xFF000000)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFF1C1C1E)),
       child: Center(
         child: CircleAvatar(
           radius: widget.isMiniView ? 24 : 40,
-          backgroundColor: Colors.blueAccent.withOpacity(0.2),
+          backgroundColor: Colors.white10,
           child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: widget.isMiniView ? 20 : 32,
-              fontWeight: FontWeight.bold,
-            ),
+            name.isNotEmpty ? name[0].toUpperCase() : "?",
+            style: const TextStyle(color: Colors.white),
           ),
         ),
       ),

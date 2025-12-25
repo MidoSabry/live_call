@@ -8,200 +8,83 @@ import '../../logic/room_cubit/room_state.dart';
 import '../widgets/controller_button.dart';
 import '../widgets/participant_tile.dart';
 
-class CallRoomScreen extends StatelessWidget {
+class CallRoomScreen extends StatefulWidget {
   static const routeName = '/call-room';
-
   const CallRoomScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final roomCubit = context.read<RoomCubit>();
-    final mediaCubit = context.read<MediaCubit>();
+  State<CallRoomScreen> createState() => _CallRoomScreenState();
+}
 
-    return PopScope(
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) {
-          roomCubit.leave();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F0F0F), // True deep black
-        extendBody: true, // Allows content to flow under the navigation bar
-        body: BlocBuilder<RoomCubit, RoomState>(
-          builder: (context, state) {
-            // Only show the loader if we are currently TRYING to connect.
-            // If state is idle or disconnected, we show a black placeholder
-            // or the pop will have already handled it.
-            if (state.connecting) {
-              return _buildLoadingState();
-            }
-
-            // If we just left the room, show nothing (Navigator is popping anyway)
-            if (!state.connected && !state.connecting) {
-              return const Scaffold(backgroundColor: Colors.black);
-            }
-
-            final participants = state.participants;
-
-            return Stack(
-              children: [
-                // 1. Dynamic Video Content Area
-                Positioned.fill(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 500),
-                    child: participants.length <= 2
-                        ? _buildMessengerLayout(participants)
-                        : _buildGridLayout(participants),
-                  ),
-                ),
-
-                // 2. Custom App Bar Overlay
-                _buildTopOverlay(context, roomCubit),
-
-                // 3. Bottom Controls with Gradient Fade
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _buildBottomControls(mediaCubit, roomCubit),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
+class _CallRoomScreenState extends State<CallRoomScreen> {
+  @override
+  void initState() {
+    super.initState();
+    context.read<MediaCubit>().startTimer();
   }
 
-  Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
-          const CircularProgressIndicator(
-            color: Colors.blueAccent,
-            strokeWidth: 2,
+          // 1. Participant Video Grid
+          BlocBuilder<RoomCubit, RoomState>(
+            builder: (context, state) {
+              final p = state.participants;
+              return p.length <= 2
+                  ? _buildMessengerLayout(p)
+                  : _buildGridLayout(p);
+            },
           ),
-          const SizedBox(height: 20),
-          Text(
-            "Connecting to Secure Room...",
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+
+          // 2. Top Bar Timer
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 0,
+            right: 0,
+            child: BlocBuilder<MediaCubit, MediaState>(
+              builder: (context, state) => Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _formatDuration(state.duration),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. Control Bar
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _buildControlBar(context),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTopOverlay(BuildContext context, RoomCubit cubit) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top + 10,
-          bottom: 20,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
-          ),
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () async {
-                // 1. Trigger the leave logic
-                // We don't 'await' here if we want the UI to disappear instantly
-                cubit.leave();
-
-                // 2. Immediately pop the screen to prevent seeing the "Loading" state
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-            const Expanded(
-              child: Text(
-                "End-to-End Encrypted",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 12,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-            const SizedBox(width: 48), // Spacer for balance
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMessengerLayout(List<Participant> participants) {
-    final local = participants.firstWhere(
-      (p) => p is LocalParticipant,
-      orElse: () => participants.first,
-    );
-    final remote = participants.firstWhere(
-      (p) => p is! LocalParticipant,
-      orElse: () => local,
-    );
-
-    return Stack(
-      key: const ValueKey('messenger_view'),
-      children: [
-        Positioned.fill(
-          child: ParticipantTile(participant: remote, isFullScreen: true),
-        ),
-        if (participants.length > 1)
-          Positioned(
-            top: 110,
-            right: 16,
-            child: Container(
-              width: 120,
-              height: 180,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white24, width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 20,
-                    color: Colors.black.withValues(alpha: 0.4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: ParticipantTile(participant: local, isMiniView: true),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildGridLayout(List<Participant> participants) {
-    return GridView.builder(
-      key: const ValueKey('grid_view'),
-      padding: const EdgeInsets.fromLTRB(12, 110, 12, 150),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.7,
-      ),
-      itemCount: participants.length,
-      itemBuilder: (context, index) =>
-          ParticipantTile(participant: participants[index]),
-    );
-  }
-
-  Widget _buildBottomControls(MediaCubit mediaCubit, RoomCubit roomCubit) {
+  Widget _buildControlBar(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -210,44 +93,38 @@ class CallRoomScreen extends StatelessWidget {
         ),
       ),
       child: BlocBuilder<MediaCubit, MediaState>(
-        builder: (context, media) {
+        builder: (context, state) {
+          final media = context.read<MediaCubit>();
           return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               RoomControlButton(
-                label: "Mute",
-                isActive: media.micEnabled,
-                icon: media.micEnabled
-                    ? Icons.mic_rounded
-                    : Icons.mic_off_rounded,
-                onTap: () => mediaCubit.toggleMic(),
+                icon: state.micEnabled ? Icons.mic : Icons.mic_off,
+                label: "Mic",
+                isActive: state.micEnabled,
+                onTap: media.toggleMic,
               ),
               RoomControlButton(
+                icon: state.cameraEnabled ? Icons.videocam : Icons.videocam_off,
                 label: "Video",
-                isActive: media.cameraEnabled,
-                icon: media.cameraEnabled
-                    ? Icons.videocam_rounded
-                    : Icons.videocam_off_rounded,
-                onTap: () => mediaCubit.toggleCamera(),
+                isActive: state.cameraEnabled,
+                onTap: media.toggleCamera,
               ),
               RoomControlButton(
-                label: "Flip",
-                icon: Icons.flip_camera_ios_rounded,
-                onTap: () => mediaCubit.switchCamera(),
+                icon: state.isSpeakerOn ? Icons.volume_up : Icons.volume_down,
+                label: "Speaker",
+                isActive: state.isSpeakerOn,
+                isSpeaker: true, // This enables the icon growth
+                onTap: media.toggleSpeaker,
               ),
               RoomControlButton(
-                label: "End Call",
+                icon: Icons.call_end,
+                label: "End",
                 isDestructive: true,
-                icon: Icons.call_end_rounded,
-                onTap: () async {
-                  // 1. Trigger the leave logic
-                  // We don't 'await' here if we want the UI to disappear instantly
-                  roomCubit.leave();
-
-                  // 2. Immediately pop the screen to prevent seeing the "Loading" state
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
+                onTap: () {
+                  media.stopTimer();
+                  context.read<RoomCubit>().leave();
+                  Navigator.pop(context);
                 },
               ),
             ],
@@ -256,4 +133,45 @@ class CallRoomScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildMessengerLayout(List<Participant> p) {
+    if (p.isEmpty) return const SizedBox();
+    final local = p.firstWhere(
+      (e) => e is LocalParticipant,
+      orElse: () => p.first,
+    );
+    final remote = p.firstWhere(
+      (e) => e is! LocalParticipant,
+      orElse: () => local,
+    );
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: ParticipantTile(participant: remote, isFullScreen: true),
+        ),
+        if (p.length > 1)
+          Positioned(
+            top: 110,
+            right: 20,
+            child: SizedBox(
+              width: 120,
+              height: 180,
+              child: ParticipantTile(participant: local, isMiniView: true),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGridLayout(List<Participant> p) => GridView.builder(
+    padding: const EdgeInsets.fromLTRB(16, 120, 16, 150),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 0.75,
+    ),
+    itemCount: p.length,
+    itemBuilder: (context, i) => ParticipantTile(participant: p[i]),
+  );
 }

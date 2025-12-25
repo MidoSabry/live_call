@@ -9,18 +9,11 @@ import 'features/calls/presentation/screens/join_room_screen.dart';
 import 'features/calls/presentation/screens/call_room_screen.dart';
 
 void main() async {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set preferred orientations (portrait and landscape)
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  // Lockdown orientations if desired, or keep flexible
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Set system UI overlay style for status bar
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -41,16 +34,19 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
+        // These will now be available globally
         BlocProvider<RoomCubit>(create: (_) => sl<RoomCubit>()),
         BlocProvider<MediaCubit>(create: (_) => sl<MediaCubit>()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'LiveKit Calls Starter',
+        title: 'LiveKit Calls',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+          brightness: Brightness.dark, // Better for Video Call apps
+          primarySwatch: Colors.blue,
           useMaterial3: true,
         ),
+        initialRoute: '/',
         routes: {
           '/': (_) => const JoinRoomScreen(),
           CallRoomScreen.routeName: (_) => const CallRoomScreen(),

@@ -1,21 +1,24 @@
 import 'package:equatable/equatable.dart';
 
-class MediaState extends Equatable {
+class MediaState {
   final bool micEnabled;
   final bool cameraEnabled;
+  final bool isSpeakerOn;
+  final Duration duration;
 
-  const MediaState({required this.micEnabled, required this.cameraEnabled});
+  MediaState({
+    required this.micEnabled,
+    required this.cameraEnabled,
+    required this.isSpeakerOn,
+    required this.duration,
+  });
 
-  factory MediaState.initial() =>
-      const MediaState(micEnabled: false, cameraEnabled: false);
-
-  MediaState copyWith({bool? micEnabled, bool? cameraEnabled}) {
+  MediaState copyWith({bool? mic, bool? cam, bool? speaker, Duration? dur}) {
     return MediaState(
-      micEnabled: micEnabled ?? this.micEnabled,
-      cameraEnabled: cameraEnabled ?? this.cameraEnabled,
+      micEnabled: mic ?? micEnabled,
+      cameraEnabled: cam ?? cameraEnabled,
+      isSpeakerOn: speaker ?? isSpeakerOn,
+      duration: dur ?? duration,
     );
   }
-
-  @override
-  List<Object?> get props => [micEnabled, cameraEnabled];
 }

@@ -1,128 +1,93 @@
 import 'dart:async';
-
 import 'package:livekit_client/livekit_client.dart';
 
-/// Single place to talk to LiveKit SDK.
-/// UI should NOT call LiveKit directly; use Cubits instead.
 class LiveKitService {
   Room? _room;
   EventsListener<RoomEvent>? _listener;
+  bool _isSpeakerOn = true;
 
   Room? get room => _room;
+  bool get isSpeakerOn => _isSpeakerOn;
 
   final _roomEventsController = StreamController<RoomEvent>.broadcast();
   Stream<RoomEvent> get roomEvents => _roomEventsController.stream;
 
   Future<Room> connect({required String wsUrl, required String token}) async {
-    // Create a fresh room each connection (simpler for starter).
     await disconnect();
 
-    final roomOptions = const RoomOptions(adaptiveStream: true, dynacast: true);
+    _room = Room(
+      roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+    );
 
-    final room = Room();
+    await _room!.prepareConnection(wsUrl, token);
+    await _room!.connect(wsUrl, token);
 
-    // Optional: speed up connection
-    await room.prepareConnection(wsUrl, token);
+    // ✅ Set initial state to FALSE (OFF)
+    await _room!.localParticipant?.setCameraEnabled(false);
+    await _room!.localParticipant?.setMicrophoneEnabled(false);
 
-    await room.connect(wsUrl, token, roomOptions: roomOptions);
+    _listener = _room!.createListener()
+      ..on<TrackMutedEvent>((event) => _roomEventsController.add(event))
+      ..on<TrackUnmutedEvent>((event) => _roomEventsController.add(event))
+      ..on<ParticipantConnectedEvent>(
+        (event) => _roomEventsController.add(event),
+      )
+      ..on<ParticipantDisconnectedEvent>(
+        (event) => _roomEventsController.add(event),
+      );
 
-    _room = room;
-
-    // Listen to room events to update cubits/UI.
-    _listener = room.createListener()
-      ..on<RoomDisconnectedEvent>((event) {
-        _roomEventsController.add(event);
-      })
-      ..on<ParticipantConnectedEvent>((event) {
-        _roomEventsController.add(event);
-      })
-      ..on<ParticipantDisconnectedEvent>((event) {
-        _roomEventsController.add(event);
-      })
-      ..on<TrackSubscribedEvent>((event) {
-        _roomEventsController.add(event);
-      })
-      ..on<TrackUnsubscribedEvent>((event) {
-        _roomEventsController.add(event);
-      });
-
-    return room;
+    await Hardware.instance.setSpeakerphoneOn(_isSpeakerOn);
+    return _room!;
   }
 
-  Future<void> disconnect() async {
-    _listener?.dispose();
-    _listener = null;
-
-    final room = _room;
-    _room = null;
-
-    if (room != null) {
-      try {
-        await room.disconnect();
-      } catch (_) {}
-    }
-  }
-
-  // ---- Media helpers ----
-  Future<void> setCameraEnabled(bool enabled) async {
-    final room = _room;
-    if (room == null) return;
-    await room.localParticipant?.setCameraEnabled(enabled);
-  }
-
-  Future<void> setMicrophoneEnabled(bool enabled) async {
-    final room = _room;
-    if (room == null) return;
-    await room.localParticipant?.setMicrophoneEnabled(enabled);
+  Future<void> toggleSpeaker() async {
+    _isSpeakerOn = !_isSpeakerOn;
+    await Hardware.instance.setSpeakerphoneOn(_isSpeakerOn);
   }
 
   Future<void> switchCamera() async {
-    final room = _room;
-    if (room == null) return;
-
-    // هات كاميرات الجهاز
-    final inputs = await Hardware.instance.videoInputs();
-    if (inputs.length < 2) return;
-
-    // الكاميرا الحالية (لو LiveKit عارفها)
-    final currentId = Hardware.instance.selectedVideoInput?.deviceId;
-
-    // اختار كاميرا مختلفة (عادة أمامي/خلفي)
-    final nextDevice = inputs.firstWhere(
-      (d) => d.deviceId != currentId,
-      orElse: () => inputs.first,
-    );
-
-    // هات LocalVideoTrack الحالي
-    LocalVideoTrack? localTrack;
-    final pubs = room.localParticipant?.videoTrackPublications ?? const [];
-    for (final pub in pubs) {
-      final t = pub.track;
-      if (t is LocalVideoTrack) {
-        localTrack = t;
-        break;
-      }
+    final track =
+        _room?.localParticipant?.videoTrackPublications.firstOrNull?.track;
+    if (track is LocalVideoTrack) {
+      final isFront =
+          track.mediaStreamTrack.getSettings()['facingMode'] == 'user';
+      await track.restartTrack(
+        CameraCaptureOptions(
+          cameraPosition: isFront ? CameraPosition.back : CameraPosition.front,
+          params: VideoParametersPresets.h720_169,
+        ),
+      );
     }
-    if (localTrack == null) return;
-
-    // ✅ switchCamera محتاجة deviceId
-    await localTrack.switchCamera(nextDevice.deviceId);
-
-    // (اختياري) حدّث اختيار الهاردوير الحالي
-    Hardware.instance.selectedVideoInput = nextDevice;
   }
 
-  List<Participant> participantsSnapshot() {
-    final room = _room;
-    if (room == null) return [];
-    final result = <Participant>[];
-    if (room.localParticipant != null) result.add(room.localParticipant!);
-    result.addAll(room.remoteParticipants.values);
-    return result;
+  Future<void> setCameraEnabled(bool enabled) async =>
+      _room?.localParticipant?.setCameraEnabled(enabled);
+  Future<void> setMicrophoneEnabled(bool enabled) async =>
+      _room?.localParticipant?.setMicrophoneEnabled(enabled);
+
+  Future<void> disconnect() async {
+    try {
+      await _listener?.dispose();
+      _listener = null;
+
+      if (_room != null) {
+        // This is the critical part that actually stops the WebRTC stream
+        await _room!.disconnect();
+        await _room!.dispose(); // Clean up resources
+        _room = null;
+      }
+
+      // Notify listeners that the room is gone
+      _roomEventsController.add(
+        RoomDisconnectedEvent(reason: DisconnectReason.unknown),
+      );
+    } catch (e) {
+      print("Error during LiveKit disconnect: $e");
+    }
   }
 
-  void dispose() {
-    _listener?.dispose();
-    _roomEventsController.close();
-  }
+  List<Participant> participantsSnapshot() => [
+    if (_room?.localParticipant != null) _room!.localParticipant!,
+    ..._room?.remoteParticipants.values ?? [],
+  ];
 }
